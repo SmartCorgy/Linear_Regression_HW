@@ -1,0 +1,125 @@
+---
+title: "LR_HW"
+author: "Ekaterina Fokina"
+date: "2023-01-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(faux)
+library(mvtnorm)
+library(olsrr)
+library(glmnet)
+```
+
+# Задание 1
+
+```{r}
+# Задание 1 (а)
+
+# Сгенерируем датасет и построим модель
+
+data <- rnorm_multi(n = 100,
+                    mu = c(88.5, 5.4),
+                    sd = c(13.25, 1.45),
+                    r = 0.6,
+                    varnames = c("creatinine", "urea"),
+                    empirical = FALSE)
+
+set.seed(1)
+
+lm <- lm(data$creatinine ~ data$urea)
+
+lm %>% summary
+
+data %>% ggplot(aes(x = urea, y = creatinine)) +
+  geom_point() +
+  stat_smooth(method = "lm")
+
+# Задание 1 (б)
+
+ols_test_normality(lm) # p-value сильно больше 0.05 - значит, нулевая гипотеза о нормальном распределении остатков не отвергается
+
+# Визуализируем:
+
+ols_plot_resid_qq(lm)
+
+# Задание 1 (в)
+
+w <- rnorm(100, mean = 25, sd = 2)
+
+data <- data %>% mutate(something = w)
+
+lm_new <- lm(data$creatinine ~ data$urea + data$something) %>% summary
+
+data %>% ggplot(aes(x = something, y = creatinine, color = "pink")) +
+  geom_point() +
+  stat_smooth(method = "lm")
+
+```
+
+1(а) Коэффициент детерминации (0.2941) показывает долю дисперсии зависимой переменной (креатинина), объясненную нашей моделью.
+62.9329 - среднее значение креатинина, если мочевина равна 0.
+Коэффициент регрессии (4.8289) показывает, как в среднем изменится значение креатинина при увеличении мочевины на единицу.
+
+1(б) p-value больше 0.05, что позволяет заключить, что остатки в нашей модели распределены нормально.
+
+1 (в) В новой модели (с тремя переменными) коэффициент детерминации практически не поменялся - упал на 0.01. Модифицированный коэффициент - тоже. Это означает, что доля объясненной дисперсии не изменилась с добавлением в модель переменной, заведомо никак не связанной с предыдущими двумя.
+
+# Задание 2
+К сожалению, у меня не получилось построить такую модель. Во всех случаях коэффициент регрессии значимо отличался от 0 для каждого из признаков.
+
+Из практики могу привести в пример скорость клубочковой фильтрации, которая связана регрессионным соотношением с массой тела, возрастом, и концентрацией креатинина в сыворотке крови [таким уравнением](https://www.google.com/search?q=%D1%81%D0%BA%D1%84+%D1%84%D0%BE%D1%80%D0%BC%D1%83%D0%BB%D0%B0&sxsrf=AJOqlzWdb6QEShduXFcY4P-liBoRqTpDSQ:1674409080162&source=lnms&tbm=isch&sa=X&ved=2ahUKEwiC5bnz29v8AhXsxIsKHQQyB_QQ_AUoAXoECAEQAw&biw=1280&bih=569&dpr=1.5#imgrc=EQRDHC9KKKNU8M).
+
+# Задание 3
+
+```{r}
+
+# Создадим выборку с заданными параметрами
+n <- 201
+lymph <- rnorm(n, mean = 20, sd = 5)
+neu <- rnorm(n, mean = 80, sd = 5)
+NLR <- neu/lymph
+
+set.seed(1)
+
+sepsis_sample <- data.frame(lymph, neu, NLR) %>% mutate(sepsis = case_when(
+  NLR < 3 ~ 0,
+  NLR > 9 ~ 1,
+  NLR >= 3 & NLR <= 9 ~ (NLR-3)/6),
+  prob = sapply(1:n, function(i) rbinom(1, 1, sepsis[i])))
+
+# Построим модель логистической регрессии вероятности сепсиса на содержание нейтрофилов и лимфоцитов
+
+glm <- glm(prob ~ neu + lymph, data = sepsis_sample, family = "binomial")
+
+glm %>% summary
+
+# И визуализируем полученную модель
+
+ggplot(sepsis_sample, aes(x = NLR, y = prob)) +
+  geom_point() +
+  stat_smooth(method = "glm", color = "pink", se= FALSE, method.args = list(family=binomial))
+
+# Какова вероятность для случайной величины prob быть равной 1, если neu = 90, а lymph = 15?
+
+new_sepsis <- data.frame(neu = 90, lymph = 15)
+
+new_sepsis$calc <- (90/15 - 3)/6
+
+new_sepsis$pred <- predict(glm, new_sepsis, type = "response")
+
+new_sepsis
+
+```
+
+ПолучилосЬ, что вероятность развития сепсиса в соответствии с формулой - 0.5, а предсказанное значение из модели - 0.55.
